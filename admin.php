@@ -298,10 +298,10 @@ $admin = $stmt->fetch(PDO::FETCH_ASSOC);
                                     <label>Type:</label>
                                     <span><?php echo htmlspecialchars($car['type']); ?></span>
                                 </div>
-                                <div class="detail-item full-width">
-                                    <label>Additional Info:</label>
-                                    <p><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
-                                </div>
+                                 <div class="detail-item full-width"> 
+                                    <label>Additional Info:</label> 
+                                    <p> <?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
+                                </div> 
                             </div>
                             <button class="btn btn-remove" 
                                     onclick="confirmRemove(<?php echo $car['id']; ?>, '<?php echo htmlspecialchars($car['brand'] . ' ' . $car['model'], ENT_QUOTES); ?>')">
