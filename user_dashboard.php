@@ -1,325 +1,214 @@
 <?php
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'user') {
-    header("Location: login.php");
-    exit;
-}
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'user') { header("Location: login.php"); exit; }
 require 'db/connection.php';
 
 $user_id = $_SESSION['user_id'];
 
-// Fetch available cars
 $stmt = $pdo->prepare("SELECT * FROM cars WHERE is_rented = 0");
 $stmt->execute();
-$available_cars = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$available_cars = $stmt->fetchAll();
 
-// Fetch currently rented cars by this user
-$stmt = $pdo->prepare("
-    SELECT c.*, r.rented_at 
-    FROM cars c 
-    JOIN rentals r ON c.id = r.car_id 
-    WHERE r.user_id = ? AND r.released_at IS NULL
-");
+$stmt = $pdo->prepare("SELECT c.*, r.rented_at FROM cars c JOIN rentals r ON c.id = r.car_id WHERE r.user_id = ? AND r.released_at IS NULL");
 $stmt->execute([$user_id]);
-$current_rentals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$current_rentals = $stmt->fetchAll();
 
-// Fetch rental history
-$stmt = $pdo->prepare("
-    SELECT c.*, r.rented_at, r.released_at 
-    FROM cars c 
-    JOIN rentals r ON c.id = r.car_id 
-    WHERE r.user_id = ? AND r.released_at IS NOT NULL
-    ORDER BY r.released_at DESC
-");
+$stmt = $pdo->prepare("SELECT c.*, r.rented_at, r.released_at FROM cars c JOIN rentals r ON c.id = r.car_id WHERE r.user_id = ? AND r.released_at IS NOT NULL ORDER BY r.released_at DESC");
 $stmt->execute([$user_id]);
-$rental_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$rental_history = $stmt->fetchAll();
 
-// Get username
 $stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$user = $stmt->fetch();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Dashboard - Car Rental</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Dashboard - Car Rental</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/custom.css">
 </head>
-<body>
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <i class="fas fa-car"></i>
-                <span>CarRental Pro</span>
-            </div>
-            <div class="nav-user">
-                <span class="welcome-text">Welcome, <?php echo htmlspecialchars($user['username']); ?></span>
-                <a href="logout.php" class="logout-btn">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+<body class="page-dashboard">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="user_dashboard.php"><i class="fas fa-car me-2"></i>CarRental Pro</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="navMain">
+                <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item"><a class="nav-link active" href="user_dashboard.php"><i class="fas fa-tachometer-alt me-1"></i>Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="profile.php"><i class="fas fa-user-cog me-1"></i>Profile</a></li>
+                    <li class="nav-item"><span class="nav-link text-light">Welcome, <?php echo htmlspecialchars($user['username']); ?></span></li>
+                    <li class="nav-item"><a class="nav-link text-warning" href="logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a></li>
+                </ul>
             </div>
         </div>
     </nav>
 
-    <div class="dashboard-container">
-        <!-- Available Cars Section -->
-        <section class="car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-car-side"></i> Available Cars for Rent</h2>
-                <span class="car-count"><?php echo count($available_cars); ?> cars available</span>
+    <main class="container py-4">
+        <h1 class="h3 fw-bold mb-4"><i class="fas fa-tachometer-alt text-primary me-2"></i>My Dashboard</h1>
+
+        <!-- Available Cars -->
+        <section class="card section-card mb-4 fade-in-up">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0"><i class="fas fa-car-side text-primary me-2"></i>Available Cars</h2>
+                <span class="badge bg-primary rounded-pill"><?php echo count($available_cars); ?> available</span>
             </div>
-            
-            <div class="cars-grid">
-                <?php foreach ($available_cars as $car): ?>
-                <div class="car-card" data-car-id="<?php echo $car['id']; ?>">
-                    <div class="car-card-header" onclick="toggleCarDetails(<?php echo $car['id']; ?>)">
-                        <div class="car-image">
-                            <?php if (!empty($car['photo'])): ?>
-                                <img src="<?php echo htmlspecialchars($car['photo']); ?>" alt="Car Image">
-                            <?php else: ?>
-                                <div class="car-placeholder">
-                                    <i class="fas fa-car"></i>
+            <div class="card-body">
+                <?php if (empty($available_cars)): ?>
+                    <p class="text-muted text-center py-4"><i class="fas fa-car-side fs-1 d-block mb-2 opacity-25"></i>No cars available right now.</p>
+                <?php else: ?>
+                    <div class="row g-3">
+                        <?php foreach ($available_cars as $car): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card car-card h-100">
+                                <div class="card-body p-3" data-bs-toggle="collapse" data-bs-target="#details-<?php echo $car['id']; ?>">
+                                    <div class="d-flex align-items-center">
+                                        <?php if (!empty($car['photo'])): ?>
+                                            <img src="<?php echo htmlspecialchars($car['photo']); ?>" class="car-thumb me-3" alt="Car">
+                                        <?php else: ?>
+                                            <div class="car-thumb-placeholder me-3"><i class="fas fa-car"></i></div>
+                                        <?php endif; ?>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h6>
+                                            <small class="text-muted">
+                                                <i class="fas fa-cog me-1"></i><?php echo htmlspecialchars($car['transmission']); ?>
+                                                <i class="fas fa-gas-pump ms-2 me-1"></i><?php echo htmlspecialchars($car['fuel']); ?>
+                                                <i class="fas fa-tachometer-alt ms-2 me-1"></i><?php echo number_format($car['mileage']); ?> km
+                                            </small>
+                                        </div>
+                                        <i class="fas fa-chevron-down text-muted"></i>
+                                    </div>
                                 </div>
-                            <?php endif; ?>
-                        </div>
-                        <div class="car-basic-info">
-                            <h3><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h3>
-                            <div class="car-specs">
-                                <span class="spec"><i class="fas fa-cog"></i> <?php echo htmlspecialchars($car['transmission']); ?></span>
-                                <span class="spec"><i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($car['fuel']); ?></span>
-                                <span class="spec"><i class="fas fa-tachometer-alt"></i> <?php echo number_format($car['mileage']); ?> km</span>
+                                <div class="collapse" id="details-<?php echo $car['id']; ?>">
+                                    <div class="car-details-area p-3">
+                                        <div class="row g-2 mb-3 small">
+                                            <div class="col-6"><strong>Manufacturer:</strong><br><?php echo htmlspecialchars($car['manufacturer']); ?></div>
+                                            <div class="col-6"><strong>Plate:</strong><br><?php echo htmlspecialchars($car['plate']); ?></div>
+                                            <div class="col-6"><strong>Type:</strong><br><?php echo htmlspecialchars($car['type']); ?></div>
+                                            <div class="col-6"><strong>Mileage:</strong><br><?php echo number_format($car['mileage']); ?> km</div>
+                                            <div class="col-12"><strong>Notes:</strong><br><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></div>
+                                        </div>
+                                        <form method="POST" action="rent_car.php">
+                                            <input type="hidden" name="car_id" value="<?php echo $car['id']; ?>">
+                                            <button type="submit" class="btn btn-success w-100"><i class="fas fa-key me-1"></i>Rent This Car</button>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="expand-icon">
-                            <i class="fas fa-chevron-down"></i>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    
-                    <div class="car-details" id="details-<?php echo $car['id']; ?>">
-                        <div class="details-grid">
-                            <div class="detail-item">
-                                <label>Manufacturer:</label>
-                                <span><?php echo htmlspecialchars($car['manufacturer']); ?></span>
-                            </div>
-                            <div class="detail-item">
-                                <label>Registration:</label>
-                                <span><?php echo htmlspecialchars($car['plate']); ?></span>
-                            </div>
-                            <div class="detail-item">
-                                <label>Type:</label>
-                                <span><?php echo htmlspecialchars($car['type']); ?></span>
-                            </div>
-                            <div class="detail-item full-width">
-                                <label>Additional Info:</label>
-                                <p><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
-                            </div>
-                        </div>
-                        <form method="POST" action="rent_car.php" class="rent-form">
-                            <input type="hidden" name="car_id" value="<?php echo $car['id']; ?>">
-                            <button type="submit" class="btn btn-rent">
-                                <i class="fas fa-key"></i> Rent This Car
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </section>
 
-        <!-- Currently Rented Cars Section -->
-        <section class="car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-car-alt"></i> Currently Rented Cars</h2>
-                <span class="car-count"><?php echo count($current_rentals); ?> cars rented</span>
+        <!-- Currently Rented -->
+        <section class="card section-card mb-4 fade-in-up">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0"><i class="fas fa-car-alt text-success me-2"></i>Currently Rented</h2>
+                <span class="badge bg-success rounded-pill"><?php echo count($current_rentals); ?> rented</span>
             </div>
-            
-            <div class="cars-grid">
+            <div class="card-body">
                 <?php if (empty($current_rentals)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-car-side"></i>
-                        <p>You don't have any rented cars at the moment</p>
-                    </div>
+                    <p class="text-muted text-center py-4"><i class="fas fa-car-side fs-1 d-block mb-2 opacity-25"></i>No cars rented right now.</p>
                 <?php else: ?>
-                    <?php foreach ($current_rentals as $car): ?>
-                    <div class="car-card rented" data-car-id="<?php echo $car['id']; ?>">
-                        <div class="car-card-header" onclick="toggleCarDetails(<?php echo $car['id']; ?>)">
-                        <div class="car-image">
-                            <?php if (!empty($car['photo'])): ?>
-                                <img src="<?php echo htmlspecialchars($car['photo']); ?>" alt="Car Image">
-                            <?php else: ?>
-                                <div class="car-placeholder">
-                                    <i class="fas fa-car"></i>
+                    <div class="row g-3">
+                        <?php foreach ($current_rentals as $car): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card car-card border-success h-100">
+                                <div class="card-body p-3" data-bs-toggle="collapse" data-bs-target="#details-r<?php echo $car['id']; ?>">
+                                    <div class="d-flex align-items-center">
+                                        <?php if (!empty($car['photo'])): ?>
+                                            <img src="<?php echo htmlspecialchars($car['photo']); ?>" class="car-thumb me-3" alt="Car">
+                                        <?php else: ?>
+                                            <div class="car-thumb-placeholder me-3"><i class="fas fa-car"></i></div>
+                                        <?php endif; ?>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h6>
+                                            <small class="text-muted">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></small>
+                                        </div>
+                                        <i class="fas fa-chevron-down text-muted"></i>
+                                    </div>
                                 </div>
-                            <?php endif; ?>
-                            </div>
-                            <div class="car-basic-info">
-                                <h3><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h3>
-                                <div class="rental-info">
-                                    <span class="rental-date">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></span>
+                                <div class="collapse" id="details-r<?php echo $car['id']; ?>">
+                                    <div class="car-details-area p-3">
+                                        <div class="row g-2 mb-3 small">
+                                            <div class="col-6"><strong>Manufacturer:</strong><br><?php echo htmlspecialchars($car['manufacturer']); ?></div>
+                                            <div class="col-6"><strong>Plate:</strong><br><?php echo htmlspecialchars($car['plate']); ?></div>
+                                            <div class="col-6"><strong>Type:</strong><br><?php echo htmlspecialchars($car['type']); ?></div>
+                                            <div class="col-6"><strong>Mileage:</strong><br><?php echo number_format($car['mileage']); ?> km</div>
+                                            <div class="col-12"><strong>Notes:</strong><br><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></div>
+                                        </div>
+                                        <form method="POST" action="release_car.php">
+                                            <input type="hidden" name="car_id" value="<?php echo $car['id']; ?>">
+                                            <button type="submit" class="btn btn-warning w-100"><i class="fas fa-undo me-1"></i>Release Car</button>
+                                        </form>
+                                    </div>
                                 </div>
-                                <div class="car-specs">
-                                    <span class="spec"><i class="fas fa-cog"></i> <?php echo htmlspecialchars($car['transmission']); ?></span>
-                                    <span class="spec"><i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($car['fuel']); ?></span>
-                                </div>
-                            </div>
-                            <div class="expand-icon">
-                                <i class="fas fa-chevron-down"></i>
                             </div>
                         </div>
-                        
-                        <div class="car-details" id="details-<?php echo $car['id']; ?>">
-                            <div class="details-grid">
-                                <div class="detail-item">
-                                    <label>Manufacturer:</label>
-                                    <span><?php echo htmlspecialchars($car['manufacturer']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Registration:</label>
-                                    <span><?php echo htmlspecialchars($car['plate']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Type:</label>
-                                    <span><?php echo htmlspecialchars($car['type']); ?></span>
-                                </div>
-                                <div class="detail-item full-width">
-                                    <label>Additional Info:</label>
-                                    <p><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
-                                </div>
-                            </div>
-                            <form method="POST" action="release_car.php" class="release-form">
-                                <input type="hidden" name="car_id" value="<?php echo $car['id']; ?>">
-                                <button type="submit" class="btn btn-release">
-                                    <i class="fas fa-undo"></i> Release Car
-                                </button>
-                            </form>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </section>
 
-        <!-- Rental History Section -->
-        <section class="car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-history"></i> Rental History</h2>
-                <span class="car-count"><?php echo count($rental_history); ?> past rentals</span>
+        <!-- Rental History -->
+        <section class="card section-card mb-4 fade-in-up">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0"><i class="fas fa-history text-secondary me-2"></i>Rental History</h2>
+                <span class="badge bg-secondary rounded-pill"><?php echo count($rental_history); ?> past</span>
             </div>
-            
-            <div class="cars-grid">
+            <div class="card-body">
                 <?php if (empty($rental_history)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-history"></i>
-                        <p>No rental history yet</p>
-                    </div>
+                    <p class="text-muted text-center py-4"><i class="fas fa-history fs-1 d-block mb-2 opacity-25"></i>No rental history yet.</p>
                 <?php else: ?>
-                    <?php foreach ($rental_history as $car): ?>
-                    <div class="car-card history" data-car-id="<?php echo $car['id']; ?>">
-                        <div class="car-card-header" onclick="toggleCarDetails(<?php echo $car['id']; ?>)">
-                        <div class="car-image">
-                            <?php if (!empty($car['photo'])): ?>
-                                <img src="<?php echo htmlspecialchars($car['photo']); ?>" alt="Car Image">
-                            <?php else: ?>
-                                <div class="car-placeholder">
-                                    <i class="fas fa-car"></i>
+                    <div class="row g-3">
+                        <?php foreach ($rental_history as $car): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card car-card h-100 opacity-75">
+                                <div class="card-body p-3" data-bs-toggle="collapse" data-bs-target="#details-h<?php echo $car['id']; ?>-<?php echo strtotime($car['rented_at']); ?>">
+                                    <div class="d-flex align-items-center">
+                                        <?php if (!empty($car['photo'])): ?>
+                                            <img src="<?php echo htmlspecialchars($car['photo']); ?>" class="car-thumb me-3" alt="Car">
+                                        <?php else: ?>
+                                            <div class="car-thumb-placeholder me-3"><i class="fas fa-car"></i></div>
+                                        <?php endif; ?>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h6>
+                                            <small class="text-muted d-block">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></small>
+                                            <small class="text-muted">Returned: <?php echo date('M j, Y', strtotime($car['released_at'])); ?></small>
+                                        </div>
+                                        <i class="fas fa-chevron-down text-muted"></i>
+                                    </div>
                                 </div>
-                            <?php endif; ?>
-                            </div>
-                            <div class="car-basic-info">
-                                <h3><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h3>
-                                <div class="rental-info">
-                                    <span class="rental-date">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></span>
-                                    <span class="return-date">Returned: <?php echo date('M j, Y', strtotime($car['released_at'])); ?></span>
-                                </div>
-                                <div class="car-specs">
-                                    <span class="spec"><i class="fas fa-cog"></i> <?php echo htmlspecialchars($car['transmission']); ?></span>
-                                    <span class="spec"><i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($car['fuel']); ?></span>
-                                </div>
-                            </div>
-                            <div class="expand-icon">
-                                <i class="fas fa-chevron-down"></i>
-                            </div>
-                        </div>
-                        
-                        <div class="car-details" id="details-<?php echo $car['id']; ?>">
-                            <div class="details-grid">
-                                <div class="detail-item">
-                                    <label>Manufacturer:</label>
-                                    <span><?php echo htmlspecialchars($car['manufacturer']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Registration:</label>
-                                    <span><?php echo htmlspecialchars($car['plate']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Type:</label>
-                                    <span><?php echo htmlspecialchars($car['type']); ?></span>
-                                </div>
-                                <div class="detail-item full-width">
-                                    <label>Additional Info:</label>
-                                    <p><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
+                                <div class="collapse" id="details-h<?php echo $car['id']; ?>-<?php echo strtotime($car['rented_at']); ?>">
+                                    <div class="car-details-area p-3">
+                                        <div class="row g-2 small">
+                                            <div class="col-6"><strong>Manufacturer:</strong><br><?php echo htmlspecialchars($car['manufacturer']); ?></div>
+                                            <div class="col-6"><strong>Plate:</strong><br><?php echo htmlspecialchars($car['plate']); ?></div>
+                                            <div class="col-6"><strong>Type:</strong><br><?php echo htmlspecialchars($car['type']); ?></div>
+                                            <div class="col-6"><strong>Mileage:</strong><br><?php echo number_format($car['mileage']); ?> km</div>
+                                            <div class="col-12"><strong>Notes:</strong><br><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </section>
-    </div>
+    </main>
 
-    <script>
-        function toggleCarDetails(carId) {
-            const details = document.getElementById(`details-${carId}`);
-            const card = document.querySelector(`[data-car-id="${carId}"]`);
-            const icon = card.querySelector('.expand-icon i');
-            
-            if (details.style.maxHeight) {
-                // Collapse
-                details.style.maxHeight = null;
-                details.classList.remove('expanded');
-                icon.classList.remove('fa-chevron-up');
-                icon.classList.add('fa-chevron-down');
-            } else {
-                // Expand
-                details.style.maxHeight = details.scrollHeight + "px";
-                details.classList.add('expanded');
-                icon.classList.remove('fa-chevron-down');
-                icon.classList.add('fa-chevron-up');
-            }
-        }
-
-        // Add smooth animations
-        document.addEventListener('DOMContentLoaded', function() {
-            const cards = document.querySelectorAll('.car-card');
-            cards.forEach((card, index) => {
-                card.style.animationDelay = `${index * 0.1}s`;
-                card.classList.add('fade-in');
-            });
-        });
-    </script>
-    <script>
-        function toggleCarDetails(carId) {
-            const details = document.getElementById(`details-${carId}`);
-            const card = document.querySelector(`[data-car-id="${carId}"]`);
-            const icon = card.querySelector('.expand-icon i');
-
-            if (details.classList.contains('expanded')) {
-                details.classList.remove('expanded');
-                details.style.maxHeight = null;
-                icon.classList.remove('fa-chevron-up');
-                icon.classList.add('fa-chevron-down');
-            } else {
-                details.classList.add('expanded');
-                details.style.maxHeight = details.scrollHeight + "px";
-                icon.classList.remove('fa-chevron-down');
-                icon.classList.add('fa-chevron-up');
-            }
-        }
-    </script>
+    <footer class="bg-dark text-light text-center py-3">
+        <p class="mb-0">&copy; 2025 Car Rental System</p>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

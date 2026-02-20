@@ -1,58 +1,33 @@
 <?php
 session_start();
-
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Check if user is admin
-if ($_SESSION['role'] !== 'admin') {
-    header("Location: user_dashboard.php");
-    exit;
-}
-
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') { header("Location: login.php"); exit; }
 require 'db/connection.php';
 
-// Handle car removal (admin can remove cars that are not currently rented)
+// Handle car removal
 if (isset($_GET['remove_car']) && isset($_GET['car_id'])) {
     $car_id = (int)$_GET['car_id'];
-    
-    // Check if car is currently rented
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM rentals WHERE car_id = :car_id AND released_at IS NULL");
-    $stmt->execute(['car_id' => $car_id]);
-    $is_rented = $stmt->fetchColumn() > 0;
-    
-    if (!$is_rented) {
-        // Car is not rented, safe to remove
-        $stmt = $pdo->prepare("DELETE FROM cars WHERE id = :car_id");
-        $stmt->execute(['car_id' => $car_id]);
-        $success_message = "Car removed successfully!";
-    } else {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM rentals WHERE car_id = ? AND released_at IS NULL");
+    $stmt->execute([$car_id]);
+    if ($stmt->fetchColumn() > 0) {
         $error_message = "Cannot remove car - it is currently rented!";
+    } else {
+        $pdo->prepare("DELETE FROM cars WHERE id = ?")->execute([$car_id]);
+        $success_message = "Car removed successfully!";
     }
 }
 
-// Fetch available cars (not currently rented)
+// Fetch data
 $stmt = $pdo->prepare("SELECT * FROM cars WHERE is_rented = FALSE ORDER BY brand, model");
 $stmt->execute();
-$available_cars = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$available_cars = $stmt->fetchAll();
 
-// Fetch rented cars with the username of the renter
-$stmt = $pdo->prepare("SELECT cars.*, rentals.user_id, users.username, rentals.rented_at 
-                       FROM cars
-                       JOIN rentals ON cars.id = rentals.car_id
-                       JOIN users ON rentals.user_id = users.id
-                       WHERE rentals.released_at IS NULL
-                       ORDER BY rentals.rented_at DESC");
+$stmt = $pdo->prepare("SELECT cars.*, users.username, rentals.rented_at FROM cars JOIN rentals ON cars.id = rentals.car_id JOIN users ON rentals.user_id = users.id WHERE rentals.released_at IS NULL ORDER BY rentals.rented_at DESC");
 $stmt->execute();
-$rented_cars = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$rented_cars = $stmt->fetchAll();
 
-// Get admin username
 $stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
 $stmt->execute([$_SESSION['user_id']]);
-$admin = $stmt->fetch(PDO::FETCH_ASSOC);
+$admin = $stmt->fetch();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -60,383 +35,244 @@ $admin = $stmt->fetch(PDO::FETCH_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Car Rental</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/custom.css">
 </head>
-<body>
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <i class="fas fa-car"></i>
-                <span>CarRental Pro</span>
-            </div>
-            <div class="nav-user">
-                <span class="welcome-text">
-                    Welcome, <?php echo htmlspecialchars($admin['username']); ?>
-                    <span class="admin-badge">👑 Admin</span>
-                </span>
-                <a href="logout.php" class="logout-btn">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+<body class="page-dashboard">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="admin.php"><i class="fas fa-car me-2"></i>CarRental Pro</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="navMain">
+                <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item"><a class="nav-link active" href="admin.php"><i class="fas fa-tachometer-alt me-1"></i>Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="admin_users.php"><i class="fas fa-users me-1"></i>Users</a></li>
+                    <li class="nav-item"><a class="nav-link" href="admin_stats.php"><i class="fas fa-chart-bar me-1"></i>Statistics</a></li>
+                    <li class="nav-item"><span class="nav-link text-light"><?php echo htmlspecialchars($admin['username']); ?> <span class="admin-badge">Admin</span></span></li>
+                    <li class="nav-item"><a class="nav-link text-warning" href="logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a></li>
+                </ul>
             </div>
         </div>
     </nav>
 
-    <div class="dashboard-container">
-        <!-- Success/Error Messages -->
+    <main class="container py-4">
+        <h1 class="h3 fw-bold mb-4"><i class="fas fa-tachometer-alt text-primary me-2"></i>Admin Dashboard</h1>
+
         <?php if (isset($success_message)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i>
-                <?php echo htmlspecialchars($success_message); ?>
-            </div>
+            <div class="alert alert-success"><i class="fas fa-check-circle me-1"></i><?php echo htmlspecialchars($success_message); ?></div>
         <?php endif; ?>
-
         <?php if (isset($error_message)): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i>
-                <?php echo htmlspecialchars($error_message); ?>
-            </div>
+            <div class="alert alert-danger"><i class="fas fa-exclamation-circle me-1"></i><?php echo htmlspecialchars($error_message); ?></div>
         <?php endif; ?>
 
-        <!-- Admin Statistics -->
-        <div class="admin-stats">
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($available_cars); ?></div>
-                <div class="stat-label">Available Cars</div>
+        <!-- Stats Row -->
+        <section class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card stat-card shadow-sm text-center p-3">
+                    <div class="stat-number"><?php echo count($available_cars); ?></div>
+                    <div class="text-muted fw-semibold">Available Cars</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($rented_cars); ?></div>
-                <div class="stat-label">Currently Rented</div>
+            <div class="col-md-4">
+                <div class="card stat-card shadow-sm text-center p-3">
+                    <div class="stat-number"><?php echo count($rented_cars); ?></div>
+                    <div class="text-muted fw-semibold">Currently Rented</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($available_cars) + count($rented_cars); ?></div>
-                <div class="stat-label">Total Fleet</div>
-            </div>
-        </div>
-
-        <!-- Add Car Section -->
-        <section class="add-car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-plus-circle"></i> Add New Car</h2>
-            </div>
-            
-            <button class="btn btn-add" onclick="toggleAddCarForm()">
-                <i class="fas fa-car"></i> Add a New Car
-            </button>
-            
-            <div class="add-car-form" id="add-car-form">
-                <form action="add_car.php" method="POST" enctype="multipart/form-data">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="manufacturer">
-                                <i class="fas fa-industry"></i>
-                                Manufacturer
-                            </label>
-                            <input type="text" id="manufacturer" name="manufacturer" 
-                                   placeholder="e.g., Stellantis" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="brand">
-                                <i class="fas fa-tag"></i>
-                                Brand
-                            </label>
-                            <input type="text" id="brand" name="brand" 
-                                   placeholder="e.g., Citroen" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="model">
-                                <i class="fas fa-car-side"></i>
-                                Model
-                            </label>
-                            <input type="text" id="model" name="model" 
-                                   placeholder="e.g., C5X" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="plate">
-                                <i class="fas fa-id-card"></i>
-                                Registration Plate
-                            </label>
-                            <input type="text" id="plate" name="plate" 
-                                   placeholder="e.g., DW12345" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="type">
-                                <i class="fas fa-car"></i>
-                                Type
-                            </label>
-                            <select id="type" name="type" required>
-                                <option value="">Select type</option>
-                                <option value="sedan">Sedan</option>
-                                <option value="hatchback">Hatchback</option>
-                                <option value="SUV">SUV</option>
-                                <option value="coupe">Coupe</option>
-                                <option value="convertible">Convertible</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="fuel">
-                                <i class="fas fa-gas-pump"></i>
-                                Fuel Type
-                            </label>
-                            <select id="fuel" name="fuel" required>
-                                <option value="">Select fuel type</option>
-                                <option value="gasoline">Gasoline</option>
-                                <option value="diesel">Diesel</option>
-                                <option value="hybrid">Hybrid</option>
-                                <option value="electric">Electric</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="transmission">
-                                <i class="fas fa-cog"></i>
-                                Transmission
-                            </label>
-                            <select id="transmission" name="transmission" required>
-                                <option value="">Select transmission</option>
-                                <option value="manual">Manual</option>
-                                <option value="automatic">Automatic</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="mileage">
-                                <i class="fas fa-tachometer-alt"></i>
-                                Mileage (km)
-                            </label>
-                            <input type="number" id="mileage" name="mileage" 
-                                   placeholder="e.g., 53400" min="0" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="photo">
-                                <i class="fas fa-camera"></i>
-                                Car Photo
-                            </label>
-                            <input type="file" id="photo" name="photo" 
-                                   accept="image/*" required>
-                        </div>
-
-                        <div class="form-group full-width">
-                            <label for="notes">
-                                <i class="fas fa-sticky-note"></i>
-                                Notes
-                            </label>
-                            <textarea id="notes" name="notes" rows="3"
-                                      placeholder="Additional information about the car..."></textarea>
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="toggleAddCarForm()">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                        <button type="submit" class="btn btn-success">
-                            <i class="fas fa-plus"></i> Add Car
-                        </button>
-                    </div>
-                </form>
+            <div class="col-md-4">
+                <div class="card stat-card shadow-sm text-center p-3">
+                    <div class="stat-number"><?php echo count($available_cars) + count($rented_cars); ?></div>
+                    <div class="text-muted fw-semibold">Total Fleet</div>
+                </div>
             </div>
         </section>
 
-        <!-- Available Cars Section -->
-        <section class="car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-car-side"></i> Available Cars for Rental</h2>
-                <span class="car-count"><?php echo count($available_cars); ?> cars available</span>
+        <!-- Add Car -->
+        <section class="card section-card mb-4">
+            <div class="card-header bg-white"><h2 class="h5 mb-0"><i class="fas fa-plus-circle text-primary me-2"></i>Add New Car</h2></div>
+            <div class="card-body">
+                <button class="btn btn-primary mb-3" type="button" data-bs-toggle="collapse" data-bs-target="#addCarForm">
+                    <i class="fas fa-car me-1"></i>Add a Car
+                </button>
+                <div class="collapse" id="addCarForm">
+                    <form action="add_car.php" method="POST" enctype="multipart/form-data" class="border rounded-3 p-4 bg-light">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Manufacturer *</label>
+                                <input type="text" class="form-control" name="manufacturer" placeholder="e.g. Stellantis" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Brand *</label>
+                                <input type="text" class="form-control" name="brand" placeholder="e.g. Citroen" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Model *</label>
+                                <input type="text" class="form-control" name="model" placeholder="e.g. C5X" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Plate *</label>
+                                <input type="text" class="form-control" name="plate" placeholder="e.g. DW12345" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Type *</label>
+                                <select class="form-select" name="type" required>
+                                    <option value="">Select</option>
+                                    <option value="sedan">Sedan</option>
+                                    <option value="hatchback">Hatchback</option>
+                                    <option value="SUV">SUV</option>
+                                    <option value="coupe">Coupe</option>
+                                    <option value="convertible">Convertible</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Fuel *</label>
+                                <select class="form-select" name="fuel" required>
+                                    <option value="">Select</option>
+                                    <option value="gasoline">Gasoline</option>
+                                    <option value="diesel">Diesel</option>
+                                    <option value="hybrid">Hybrid</option>
+                                    <option value="electric">Electric</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Transmission *</label>
+                                <select class="form-select" name="transmission" required>
+                                    <option value="">Select</option>
+                                    <option value="manual">Manual</option>
+                                    <option value="automatic">Automatic</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Mileage (km) *</label>
+                                <input type="number" class="form-control" name="mileage" min="0" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Photo *</label>
+                                <input type="file" class="form-control" name="photo" accept="image/*" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Notes</label>
+                                <textarea class="form-control" name="notes" rows="2" placeholder="Additional info..."></textarea>
+                            </div>
+                        </div>
+                        <div class="mt-3 d-flex gap-2 justify-content-end">
+                            <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#addCarForm"><i class="fas fa-times me-1"></i>Cancel</button>
+                            <button type="submit" class="btn btn-success"><i class="fas fa-plus me-1"></i>Add Car</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-            
-            <div class="cars-grid">
+        </section>
+
+        <!-- Available Cars -->
+        <section class="card section-card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0"><i class="fas fa-car-side text-primary me-2"></i>Available Cars</h2>
+                <span class="badge bg-primary rounded-pill"><?php echo count($available_cars); ?></span>
+            </div>
+            <div class="card-body">
                 <?php if (empty($available_cars)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-car-side"></i>
-                        <p>No cars available for rental at the moment</p>
-                    </div>
+                    <p class="text-muted text-center py-4">No available cars.</p>
                 <?php else: ?>
-                    <?php foreach ($available_cars as $car): ?>
-                    <div class="car-card" data-car-id="<?php echo $car['id']; ?>">
-                        <div class="car-card-header" onclick="toggleCarDetails(<?php echo $car['id']; ?>)">
-                            <div class="car-image">
-                                <?php if (!empty($car['photo'])): ?>
-                                    <img src="<?php echo htmlspecialchars($car['photo']); ?>" alt="Car Image">
-                                <?php else: ?>
-                                    <div class="car-placeholder">
-                                        <i class="fas fa-car"></i>
+                    <div class="row g-3">
+                        <?php foreach ($available_cars as $car): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card car-card h-100">
+                                <div class="card-body p-3" data-bs-toggle="collapse" data-bs-target="#adm-<?php echo $car['id']; ?>">
+                                    <div class="d-flex align-items-center">
+                                        <?php if (!empty($car['photo'])): ?>
+                                            <img src="<?php echo htmlspecialchars($car['photo']); ?>" class="car-thumb me-3" alt="Car">
+                                        <?php else: ?>
+                                            <div class="car-thumb-placeholder me-3"><i class="fas fa-car"></i></div>
+                                        <?php endif; ?>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h6>
+                                            <small class="text-muted">
+                                                <i class="fas fa-cog me-1"></i><?php echo htmlspecialchars($car['transmission']); ?>
+                                                <i class="fas fa-gas-pump ms-2 me-1"></i><?php echo htmlspecialchars($car['fuel']); ?>
+                                            </small>
+                                        </div>
+                                        <i class="fas fa-chevron-down text-muted"></i>
                                     </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="car-basic-info">
-                                <h3><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h3>
-                                <div class="car-specs">
-                                    <span class="spec"><i class="fas fa-cog"></i> <?php echo htmlspecialchars($car['transmission']); ?></span>
-                                    <span class="spec"><i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($car['fuel']); ?></span>
-                                    <span class="spec"><i class="fas fa-tachometer-alt"></i> <?php echo number_format($car['mileage']); ?> km</span>
                                 </div>
-                            </div>
-                            <div class="expand-icon">
-                                <i class="fas fa-chevron-down"></i>
+                                <div class="collapse" id="adm-<?php echo $car['id']; ?>">
+                                    <div class="car-details-area p-3">
+                                        <div class="row g-2 mb-3 small">
+                                            <div class="col-6"><strong>Manufacturer:</strong><br><?php echo htmlspecialchars($car['manufacturer']); ?></div>
+                                            <div class="col-6"><strong>Plate:</strong><br><?php echo htmlspecialchars($car['plate']); ?></div>
+                                            <div class="col-6"><strong>Type:</strong><br><?php echo htmlspecialchars($car['type']); ?></div>
+                                            <div class="col-6"><strong>Mileage:</strong><br><?php echo number_format($car['mileage']); ?> km</div>
+                                            <div class="col-12"><strong>Notes:</strong><br><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></div>
+                                        </div>
+                                        <a href="admin.php?remove_car=1&car_id=<?php echo $car['id']; ?>"
+                                           class="btn btn-danger w-100"
+                                           onclick="return confirm('Remove <?php echo htmlspecialchars($car['brand'] . ' ' . $car['model'], ENT_QUOTES); ?>?');">
+                                            <i class="fas fa-trash me-1"></i>Remove Car
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="car-details" id="details-<?php echo $car['id']; ?>">
-                            <div class="details-grid">
-                                <div class="detail-item">
-                                    <label>Manufacturer:</label>
-                                    <span><?php echo htmlspecialchars($car['manufacturer']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Registration:</label>
-                                    <span><?php echo htmlspecialchars($car['plate']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Type:</label>
-                                    <span><?php echo htmlspecialchars($car['type']); ?></span>
-                                </div>
-                                 <div class="detail-item full-width"> 
-                                    <label>Additional Info:</label> 
-                                    <p> <?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
-                                </div> 
-                            </div>
-                            <button class="btn btn-remove" 
-                                    onclick="confirmRemove(<?php echo $car['id']; ?>, '<?php echo htmlspecialchars($car['brand'] . ' ' . $car['model'], ENT_QUOTES); ?>')">
-                                <i class="fas fa-trash"></i> Remove Car
-                            </button>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </section>
 
-        <!-- Currently Rented Cars Section -->
-        <section class="car-section">
-            <div class="section-header">
-                <h2><i class="fas fa-key"></i> Currently Rented Cars</h2>
-                <span class="car-count"><?php echo count($rented_cars); ?> cars rented</span>
+        <!-- Rented Cars -->
+        <section class="card section-card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0"><i class="fas fa-key text-success me-2"></i>Currently Rented</h2>
+                <span class="badge bg-success rounded-pill"><?php echo count($rented_cars); ?></span>
             </div>
-            
-            <div class="cars-grid">
+            <div class="card-body">
                 <?php if (empty($rented_cars)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <p>No cars are currently rented</p>
-                    </div>
+                    <p class="text-muted text-center py-4">No cars currently rented.</p>
                 <?php else: ?>
-                    <?php foreach ($rented_cars as $car): ?>
-                    <div class="car-card rented" data-car-id="<?php echo $car['id']; ?>">
-                        <div class="car-card-header" onclick="toggleCarDetails(<?php echo $car['id']; ?>)">
-                            <div class="car-image">
-                                <?php if (!empty($car['photo'])): ?>
-                                    <img src="<?php echo htmlspecialchars($car['photo']); ?>" alt="Car Image">
-                                <?php else: ?>
-                                    <div class="car-placeholder">
-                                        <i class="fas fa-car"></i>
+                    <div class="row g-3">
+                        <?php foreach ($rented_cars as $car): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card car-card border-success h-100">
+                                <div class="card-body p-3" data-bs-toggle="collapse" data-bs-target="#admr-<?php echo $car['id']; ?>">
+                                    <div class="d-flex align-items-center">
+                                        <?php if (!empty($car['photo'])): ?>
+                                            <img src="<?php echo htmlspecialchars($car['photo']); ?>" class="car-thumb me-3" alt="Car">
+                                        <?php else: ?>
+                                            <div class="car-thumb-placeholder me-3"><i class="fas fa-car"></i></div>
+                                        <?php endif; ?>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h6>
+                                            <small class="text-primary fw-semibold"><i class="fas fa-user me-1"></i><?php echo htmlspecialchars($car['username']); ?></small><br>
+                                            <small class="text-muted">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></small>
+                                        </div>
+                                        <i class="fas fa-chevron-down text-muted"></i>
                                     </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="car-basic-info">
-                                <h3><?php echo htmlspecialchars($car['brand'] . ' ' . $car['model']); ?></h3>
-                                <div class="rental-info">
-                                    <span class="renter-info">
-                                        <i class="fas fa-user"></i> <?php echo htmlspecialchars($car['username']); ?>
-                                    </span>
-                                    <span class="rental-date">Rented: <?php echo date('M j, Y', strtotime($car['rented_at'])); ?></span>
                                 </div>
-                                <div class="car-specs">
-                                    <span class="spec"><i class="fas fa-cog"></i> <?php echo htmlspecialchars($car['transmission']); ?></span>
-                                    <span class="spec"><i class="fas fa-gas-pump"></i> <?php echo htmlspecialchars($car['fuel']); ?></span>
-                                </div>
-                            </div>
-                            <div class="expand-icon">
-                                <i class="fas fa-chevron-down"></i>
-                            </div>
-                        </div>
-                        
-                        <div class="car-details" id="details-<?php echo $car['id']; ?>">
-                            <div class="details-grid">
-                                <div class="detail-item">
-                                    <label>Manufacturer:</label>
-                                    <span><?php echo htmlspecialchars($car['manufacturer']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Registration:</label>
-                                    <span><?php echo htmlspecialchars($car['plate']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Type:</label>
-                                    <span><?php echo htmlspecialchars($car['type']); ?></span>
-                                </div>
-                                <div class="detail-item">
-                                    <label>Mileage:</label>
-                                    <span><?php echo number_format($car['mileage']); ?> km</span>
-                                </div>
-                                <div class="detail-item full-width">
-                                    <label>Additional Info:</label>
-                                    <p><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></p>
+                                <div class="collapse" id="admr-<?php echo $car['id']; ?>">
+                                    <div class="car-details-area p-3">
+                                        <div class="row g-2 small">
+                                            <div class="col-6"><strong>Manufacturer:</strong><br><?php echo htmlspecialchars($car['manufacturer']); ?></div>
+                                            <div class="col-6"><strong>Plate:</strong><br><?php echo htmlspecialchars($car['plate']); ?></div>
+                                            <div class="col-6"><strong>Type:</strong><br><?php echo htmlspecialchars($car['type']); ?></div>
+                                            <div class="col-6"><strong>Mileage:</strong><br><?php echo number_format($car['mileage']); ?> km</div>
+                                            <div class="col-12"><strong>Notes:</strong><br><?php echo htmlspecialchars($car['notes'] ?? 'No additional information'); ?></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </section>
-    </div>
+    </main>
 
-    <script>
-        function toggleCarDetails(carId) {
-            const details = document.getElementById(`details-${carId}`);
-            const card = document.querySelector(`[data-car-id="${carId}"]`);
-            const icon = card.querySelector('.expand-icon i');
-            
-            if (details.style.maxHeight) {
-                // Collapse
-                details.style.maxHeight = null;
-                details.classList.remove('expanded');
-                icon.classList.remove('fa-chevron-up');
-                icon.classList.add('fa-chevron-down');
-            } else {
-                // Expand
-                details.style.maxHeight = details.scrollHeight + "px";
-                details.classList.add('expanded');
-                icon.classList.remove('fa-chevron-down');
-                icon.classList.add('fa-chevron-up');
-            }
-        }
-
-        function toggleAddCarForm() {
-            const form = document.getElementById('add-car-form');
-            const button = document.querySelector('.btn-add');
-            
-            if (form.classList.contains('show')) {
-                form.classList.remove('show');
-                button.innerHTML = '<i class="fas fa-car"></i> Add a New Car';
-            } else {
-                form.classList.add('show');
-                button.innerHTML = '<i class="fas fa-times"></i> Cancel';
-            }
-        }
-
-        function confirmRemove(carId, carName) {
-            if (confirm(`Are you sure you want to remove "${carName}"? This action cannot be undone.`)) {
-                window.location.href = `admin.php?remove_car=1&car_id=${carId}`;
-            }
-        }
-
-        // Add smooth animations
-        document.addEventListener('DOMContentLoaded', function() {
-            const cards = document.querySelectorAll('.car-card');
-            cards.forEach((card, index) => {
-                card.style.animationDelay = `${index * 0.1}s`;
-                card.classList.add('fade-in');
-            });
-        });
-    </script>
+    <footer class="bg-dark text-light text-center py-3">
+        <p class="mb-0">&copy; 2025 Car Rental System</p>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
