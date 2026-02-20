@@ -50,11 +50,17 @@ A web-based car rental management system built with PHP, MySQL, HTML, CSS (Boots
 2. Install XAMPP on your computer
 3. Start **Apache** and **MySQL** from the XAMPP Control Panel
 
-### Step 2: Place the Project
-Copy the entire `CarRentalProject` folder into XAMPP htdocs:
-- **Windows:** `C:\xampp\htdocs\CarRentalProject`
-- **macOS:** `/Applications/XAMPP/xamppfiles/htdocs/CarRentalProject`
-- **Linux:** `/opt/lampp/htdocs/CarRentalProject`
+### Step 2: Clone the Project from GitHub
+1. Open a terminal (Command Prompt on Windows, Terminal on macOS/Linux)
+2. Navigate to the XAMPP htdocs folder:
+   - **Windows:** `cd C:\xampp\htdocs`
+   - **macOS:** `cd /Applications/XAMPP/xamppfiles/htdocs`
+   - **Linux:** `cd /opt/lampp/htdocs`
+3. Clone the repository:
+   ```
+   git clone https://github.com/ahmedbenrhaiem/CarRentalProject.git
+   ```
+4. This will create a `CarRentalProject` folder inside htdocs with all project files.
 
 ### Step 3: Create and Import the Database
 1. Open phpMyAdmin: `http://localhost/phpmyadmin/`
